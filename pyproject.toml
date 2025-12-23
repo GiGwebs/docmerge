@@ -51,9 +51,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/gigwebs/docmerge"
-Repository = "https://github.com/gigwebs/docmerge"
-Issues = "https://github.com/gigwebs/docmerge/issues"
+Homepage = "https://github.com/GiGwebs/docmerge"
+Repository = "https://github.com/GiGwebs/docmerge"
+Issues = "https://github.com/GiGwebs/docmerge/issues"
 
 [project.scripts]
 docmerge = "docmerge.cli:main"

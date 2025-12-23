@@ -19,7 +19,7 @@ A powerful command-line tool to organize and merge scattered documents (PDF, DOC
 
 ```bash
 # Clone the repository
-git clone https://github.com/gigwebs/docmerge.git
+git clone https://github.com/GiGwebs/docmerge.git
 cd docmerge
 
 # Install with pip
