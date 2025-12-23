@@ -20,6 +20,13 @@ try:
 except ImportError:
     DOCX_SUPPORT = False
 
+try:
+    from pptx import Presentation
+    from pptx.util import Inches
+    PPTX_SUPPORT = True
+except ImportError:
+    PPTX_SUPPORT = False
+
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.jfif', '.bmp', '.tiff', '.heic'}
 MARKDOWN_EXTENSIONS = {'.md', '.markdown', '.txt'}
 
@@ -290,10 +297,63 @@ def convert_markdown_to_pdf_bytes(md_path: str, page_size=A4) -> bytes | None:
         return None
 
 
+def convert_pptx_to_pdf_bytes(pptx_path: str, page_size=A4) -> bytes | None:
+    """Convert PowerPoint file to PDF bytes."""
+    if not PPTX_SUPPORT:
+        print("  WARNING: python-pptx not installed, cannot convert PPTX")
+        return None
+    
+    try:
+        prs = Presentation(pptx_path)
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=page_size)
+        page_width, page_height = page_size
+        margin = 0.5 * inch
+        
+        filename = os.path.basename(pptx_path)
+        
+        for slide_num, slide in enumerate(prs.slides, 1):
+            # Title for each slide
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(margin, page_height - margin, f"{filename} - Slide {slide_num}")
+            
+            y = page_height - margin - 30
+            c.setFont("Helvetica", 11)
+            
+            # Extract text from shapes
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    text = shape.text.strip()
+                    for line in text.split('\n'):
+                        if y < margin + 20:
+                            c.showPage()
+                            c.setFont("Helvetica-Bold", 14)
+                            c.drawString(margin, page_height - margin, f"{filename} - Slide {slide_num} (cont.)")
+                            y = page_height - margin - 30
+                            c.setFont("Helvetica", 11)
+                        
+                        # Truncate long lines
+                        max_chars = int((page_width - 2 * margin) / 6)
+                        if len(line) > max_chars:
+                            line = line[:max_chars-3] + "..."
+                        c.drawString(margin, y, line)
+                        y -= 14
+            
+            c.showPage()
+        
+        c.save()
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception as e:
+        print(f"  ERROR converting PPTX {pptx_path}: {e}")
+        return None
+
+
 def is_supported_file(filepath: str) -> bool:
     """Check if file type is supported for conversion."""
     ext = Path(filepath).suffix.lower()
-    return ext in IMAGE_EXTENSIONS or ext == '.pdf' or ext == '.docx' or ext in MARKDOWN_EXTENSIONS
+    return (ext in IMAGE_EXTENSIONS or ext == '.pdf' or ext == '.docx' 
+            or ext in MARKDOWN_EXTENSIONS or ext == '.pptx')
 
 
 def get_file_type(filepath: str) -> str:
@@ -303,6 +363,8 @@ def get_file_type(filepath: str) -> str:
         return 'pdf'
     elif ext == '.docx':
         return 'docx'
+    elif ext == '.pptx':
+        return 'pptx'
     elif ext in IMAGE_EXTENSIONS:
         return 'image'
     elif ext in MARKDOWN_EXTENSIONS:

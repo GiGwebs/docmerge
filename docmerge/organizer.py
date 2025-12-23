@@ -17,6 +17,7 @@ from .converter import (
     convert_image_to_pdf_bytes,
     convert_docx_to_pdf_bytes,
     convert_markdown_to_pdf_bytes,
+    convert_pptx_to_pdf_bytes,
     create_title_page,
     is_supported_file,
     get_file_type,
@@ -271,6 +272,15 @@ class DocumentOrganizer:
                     for page in reader.pages:
                         pdf_writer.add_page(page)
                     self.log(f"  Added Markdown: {filename}")
+                    return True
+
+            elif file_type == 'pptx':
+                pdf_bytes = convert_pptx_to_pdf_bytes(str(file_path), page_size=self.page_size)
+                if pdf_bytes:
+                    reader = PdfReader(BytesIO(pdf_bytes))
+                    for page in reader.pages:
+                        pdf_writer.add_page(page)
+                    self.log(f"  Added PPTX: {filename}")
                     return True
             
             return False
