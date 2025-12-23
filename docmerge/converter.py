@@ -21,6 +21,7 @@ except ImportError:
     DOCX_SUPPORT = False
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.jfif', '.bmp', '.tiff', '.heic'}
+MARKDOWN_EXTENSIONS = {'.md', '.markdown', '.txt'}
 
 
 def convert_image_to_pdf_bytes(image_path: str, add_source_label: bool = True, page_size=A4) -> bytes | None:
@@ -233,10 +234,66 @@ def create_title_page(title: str, subtitle: str = "", page_size=A4) -> bytes:
     return buffer.getvalue()
 
 
+def convert_markdown_to_pdf_bytes(md_path: str, page_size=A4) -> bytes | None:
+    """Convert markdown/text file to PDF bytes."""
+    try:
+        with open(md_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=page_size)
+        page_width, page_height = page_size
+        margin = inch
+        y = page_height - margin
+        line_height = 12
+        max_width = page_width - 2 * margin
+        
+        filename = os.path.basename(md_path)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(margin, y, f"Document: {filename}")
+        y -= line_height * 2
+        
+        c.setFont("Courier", 9)
+        
+        for line in content.split('\n'):
+            if y < margin:
+                c.showPage()
+                c.setFont("Courier", 9)
+                y = page_height - margin
+            
+            # Handle long lines
+            while len(line) > 0:
+                if c.stringWidth(line, "Courier", 9) <= max_width:
+                    c.drawString(margin, y, line)
+                    y -= line_height
+                    break
+                else:
+                    # Find break point
+                    break_at = len(line)
+                    while break_at > 0 and c.stringWidth(line[:break_at], "Courier", 9) > max_width:
+                        break_at -= 1
+                    if break_at == 0:
+                        break_at = 1
+                    c.drawString(margin, y, line[:break_at])
+                    y -= line_height
+                    line = line[break_at:]
+                    if y < margin:
+                        c.showPage()
+                        c.setFont("Courier", 9)
+                        y = page_height - margin
+        
+        c.save()
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception as e:
+        print(f"  ERROR converting markdown {md_path}: {e}")
+        return None
+
+
 def is_supported_file(filepath: str) -> bool:
     """Check if file type is supported for conversion."""
     ext = Path(filepath).suffix.lower()
-    return ext in IMAGE_EXTENSIONS or ext == '.pdf' or ext == '.docx'
+    return ext in IMAGE_EXTENSIONS or ext == '.pdf' or ext == '.docx' or ext in MARKDOWN_EXTENSIONS
 
 
 def get_file_type(filepath: str) -> str:
@@ -248,4 +305,6 @@ def get_file_type(filepath: str) -> str:
         return 'docx'
     elif ext in IMAGE_EXTENSIONS:
         return 'image'
+    elif ext in MARKDOWN_EXTENSIONS:
+        return 'markdown'
     return 'unknown'

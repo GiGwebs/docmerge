@@ -77,6 +77,12 @@ How it works:
     )
 
     parser.add_argument(
+        '-s', '--smart',
+        action='store_true',
+        help='Smart combine: auto-determine optimal PDF grouping based on content'
+    )
+
+    parser.add_argument(
         '--no-titles',
         action='store_true',
         help='Skip adding title pages to PDFs'
@@ -133,7 +139,8 @@ How it works:
         page_size=args.page_size.upper(),
         add_title_pages=not args.no_titles,
         add_source_labels=not args.no_labels,
-        verbose=not args.quiet
+        verbose=not args.quiet,
+        smart_combine=args.smart
     )
 
     try:

@@ -16,10 +16,10 @@ from reportlab.lib.pagesizes import A4, LETTER
 from .converter import (
     convert_image_to_pdf_bytes,
     convert_docx_to_pdf_bytes,
+    convert_markdown_to_pdf_bytes,
     create_title_page,
     is_supported_file,
     get_file_type,
-    IMAGE_EXTENSIONS
 )
 
 # System files to always exclude
@@ -45,7 +45,8 @@ class DocumentOrganizer:
         page_size: str = "A4",
         add_title_pages: bool = True,
         add_source_labels: bool = True,
-        verbose: bool = True
+        verbose: bool = True,
+        smart_combine: bool = False
     ):
         """
         Initialize the document organizer.
@@ -53,11 +54,12 @@ class DocumentOrganizer:
         Args:
             source_dir: Directory containing documents to organize
             output_dir: Directory for output PDFs
-            group_size: Number of categories to combine per merged PDF
+            group_size: Number of categories to combine per merged PDF (ignored if smart_combine)
             page_size: Page size ("A4" or "LETTER")
             add_title_pages: Add title pages to each section
             add_source_labels: Add source labels to converted images
             verbose: Print progress messages
+            smart_combine: Auto-determine optimal PDF grouping
         """
         self.source_dir = Path(source_dir)
         self.output_dir = Path(output_dir)
@@ -66,6 +68,7 @@ class DocumentOrganizer:
         self.add_title_pages = add_title_pages
         self.add_source_labels = add_source_labels
         self.verbose = verbose
+        self.smart_combine = smart_combine
         
         self.individual_dir = self.output_dir / "Individual"
         self.combined_dir = self.output_dir / "Combined"
@@ -95,6 +98,78 @@ class DocumentOrganizer:
         num = int(match.group(1)) if match else 999
         alpha_part = re.sub(r'^[\d\)\.\s\-_]+', '', filename).lower()
         return (num, alpha_part, filename)
+
+    def estimate_page_count(self, file_path: Path) -> int:
+        """Estimate page count for a file."""
+        ext = file_path.suffix.lower()
+        try:
+            if ext == '.pdf':
+                reader = PdfReader(str(file_path))
+                return len(reader.pages)
+            elif ext in {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.jfif', '.bmp', '.tiff'}:
+                return 1
+            elif ext == '.docx':
+                # Estimate ~2 pages per 10KB for docx
+                size_kb = file_path.stat().st_size / 1024
+                return max(1, int(size_kb / 10))
+            elif ext == '.md':
+                # Estimate ~1 page per 3KB for markdown
+                size_kb = file_path.stat().st_size / 1024
+                return max(1, int(size_kb / 3))
+        except:
+            pass
+        return 1
+
+    def calculate_smart_grouping(self, categories: list, target_pages: int = 50) -> int:
+        """
+        Calculate optimal group size based on content.
+        
+        Args:
+            categories: List of (name, path) tuples
+            target_pages: Target pages per combined PDF
+        
+        Returns:
+            Optimal group_size value
+        """
+        if len(categories) <= 1:
+            return 0  # No combining needed
+        
+        # Estimate total pages per category
+        category_pages = []
+        for name, path in categories:
+            total_pages = 0
+            for item in path.rglob('*'):
+                if item.is_file() and is_supported_file(str(item)):
+                    total_pages += self.estimate_page_count(item)
+            category_pages.append(total_pages)
+        
+        total_pages = sum(category_pages)
+        avg_pages_per_cat = total_pages / len(categories) if categories else 0
+        
+        self.log(f"Smart combine: {len(categories)} categories, ~{total_pages} total pages")
+        
+        # Decision logic:
+        # - If total < 30 pages: single PDF (group_size = len(categories))
+        # - If total < 100 pages: 1-2 PDFs
+        # - Otherwise: target ~50 pages per PDF
+        
+        if total_pages <= 30:
+            self.log(f"  → Small collection, will create single PDF")
+            return len(categories)  # All in one
+        elif total_pages <= 100:
+            num_pdfs = 2 if total_pages > 60 else 1
+            group_size = max(1, len(categories) // num_pdfs)
+            self.log(f"  → Medium collection, will create ~{num_pdfs} PDF(s)")
+            return group_size
+        else:
+            # Target ~50 pages per combined PDF
+            if avg_pages_per_cat > 0:
+                group_size = max(1, int(target_pages / avg_pages_per_cat))
+            else:
+                group_size = 3
+            num_pdfs = max(1, (len(categories) + group_size - 1) // group_size)
+            self.log(f"  → Large collection, will create ~{num_pdfs} PDF(s)")
+            return group_size
     
     def discover_categories(self) -> list[tuple[str, Path]]:
         """
@@ -187,6 +262,15 @@ class DocumentOrganizer:
                     for page in reader.pages:
                         pdf_writer.add_page(page)
                     self.log(f"  Added DOCX: {filename}")
+                    return True
+
+            elif file_type == 'markdown':
+                pdf_bytes = convert_markdown_to_pdf_bytes(str(file_path), page_size=self.page_size)
+                if pdf_bytes:
+                    reader = PdfReader(BytesIO(pdf_bytes))
+                    for page in reader.pages:
+                        pdf_writer.add_page(page)
+                    self.log(f"  Added Markdown: {filename}")
                     return True
             
             return False
@@ -342,6 +426,10 @@ class DocumentOrganizer:
         categories = self.discover_categories()
         self.log(f"\nFound {len(categories)} categories")
         
+        # Calculate smart grouping if enabled
+        if self.smart_combine:
+            self.group_size = self.calculate_smart_grouping(categories)
+        
         individual_pdfs = []
         for idx, (name, path) in enumerate(categories, 1):
             pdf_path = self.process_category(name, path, idx)
@@ -349,7 +437,7 @@ class DocumentOrganizer:
                 individual_pdfs.append(pdf_path)
         
         # Create combined PDFs
-        if len(individual_pdfs) > 1:
+        if len(individual_pdfs) > 1 and self.group_size > 0:
             self.create_combined_pdfs(individual_pdfs)
         
         # Handle set-aside files
