@@ -123,7 +123,8 @@ class DocumentOrganizer:
 
     def calculate_smart_grouping(self, categories: list, target_pages: int = 50) -> int:
         """
-        Calculate optimal group size based on content.
+        Calculate optimal group size based on content while respecting category boundaries.
+        Ensures complete categories/lectures stay together in single PDFs.
         
         Args:
             categories: List of (name, path) tuples
@@ -148,29 +149,68 @@ class DocumentOrganizer:
         avg_pages_per_cat = total_pages / len(categories) if categories else 0
         
         self.log(f"Smart combine: {len(categories)} categories, ~{total_pages} total pages")
+        self.log(f"  Pages per category: {category_pages}")
         
-        # Decision logic:
-        # - If total < 30 pages: single PDF (group_size = len(categories))
-        # - If total < 100 pages: 1-2 PDFs
-        # - Otherwise: target ~50 pages per PDF
+        # Decision logic that respects category boundaries:
+        # - If total < 30 pages: single PDF (all categories together)
+        # - Otherwise: find optimal grouping that keeps categories complete
         
         if total_pages <= 30:
             self.log(f"  → Small collection, will create single PDF")
             return len(categories)  # All in one
-        elif total_pages <= 100:
-            num_pdfs = 2 if total_pages > 60 else 1
-            group_size = max(1, len(categories) // num_pdfs)
-            self.log(f"  → Medium collection, will create ~{num_pdfs} PDF(s)")
-            return group_size
-        else:
-            # Target ~50 pages per combined PDF
-            if avg_pages_per_cat > 0:
-                group_size = max(1, int(target_pages / avg_pages_per_cat))
+        
+        # For larger collections, use dynamic grouping that respects boundaries
+        # Try to group categories to get close to target_pages without splitting
+        best_group_size = self._find_optimal_grouping(category_pages, target_pages)
+        
+        num_pdfs = max(1, (len(categories) + best_group_size - 1) // best_group_size)
+        self.log(f"  → Will create ~{num_pdfs} PDF(s) with ~{best_group_size} categories each")
+        self.log(f"  → Each category stays complete (no split lectures)")
+        
+        return best_group_size
+    
+    def _find_optimal_grouping(self, category_pages: list, target_pages: int) -> int:
+        """
+        Find optimal group size that keeps categories together while targeting page count.
+        Uses greedy bin-packing approach to group categories efficiently.
+        
+        Args:
+            category_pages: List of page counts per category
+            target_pages: Target pages per combined PDF
+        
+        Returns:
+            Optimal group size
+        """
+        num_categories = len(category_pages)
+        
+        # Special case: if we have very few categories, combine intelligently
+        if num_categories <= 3:
+            total = sum(category_pages)
+            if total <= target_pages * 1.5:
+                return num_categories  # All in one
             else:
-                group_size = 3
-            num_pdfs = max(1, (len(categories) + group_size - 1) // group_size)
-            self.log(f"  → Large collection, will create ~{num_pdfs} PDF(s)")
-            return group_size
+                return max(1, num_categories // 2)  # Split in half
+        
+        # Use greedy bin-packing to find how many categories fit in target_pages
+        # This simulates actual grouping behavior
+        current_group_pages = 0
+        categories_in_group = 0
+        
+        for pages in category_pages:
+            if current_group_pages + pages <= target_pages * 1.2:  # 20% tolerance
+                current_group_pages += pages
+                categories_in_group += 1
+            else:
+                # This group is full, start new one
+                break
+        
+        # Ensure we group at least 2 categories (otherwise no point in combining)
+        group_size = max(2, categories_in_group)
+        
+        # But don't exceed half the total categories (want at least 2 combined PDFs)
+        group_size = min(group_size, num_categories // 2)
+        
+        return group_size
     
     def discover_categories(self) -> list[tuple[str, Path]]:
         """
