@@ -4,13 +4,16 @@ A powerful command-line tool to organize and merge scattered documents (PDF, DOC
 
 ## Features
 
-- **Multi-format support**: PDF, DOCX, JPG, PNG, GIF, WEBP, JFIF, BMP, TIFF, HEIC
+- **Multi-format support**: PDF, DOCX, PPTX, Markdown/TXT, JPG, PNG, GIF, WEBP, JFIF, BMP, TIFF, HEIC
+- **Smart combine**: Auto-determines optimal PDF grouping based on content size
 - **Smart organization**: Automatically discovers categories from folder structure
 - **Intelligent sorting**: Files sorted by number prefix (1), 2), 3)...) then alphabetically
 - **Combined PDFs**: Group multiple categories into merged PDFs
 - **Title pages**: Auto-generated title pages for easy navigation
 - **Image handling**: Auto-rotation based on EXIF, source labels added
 - **DOCX conversion**: Text and tables extracted and formatted
+- **PPTX conversion**: PowerPoint slides converted to PDF with text extraction
+- **Markdown support**: .md, .markdown, and .txt files converted to formatted PDFs
 - **Clean output**: System files automatically set aside
 
 ## Installation
@@ -29,7 +32,7 @@ pip install -e .
 ### Manual Install
 
 ```bash
-pip install pypdf pillow python-docx reportlab
+pip install pypdf pillow python-docx python-pptx reportlab
 ```
 
 Then add the docmerge directory to your PATH or create an alias.
